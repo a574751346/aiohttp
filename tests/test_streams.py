@@ -752,6 +752,33 @@ class TestStreamReader:
         assert b'' == data
         assert not end_of_chunk
 
+    async def test_chunksplits_consumed(self) -> None:
+        """ Test for memoryleak on chunksplits """
+        stream = self._make_one()
+
+        stream.begin_http_chunk_receiving()
+        stream.feed_data(b'part1')
+        stream.end_http_chunk_receiving()
+        stream.begin_http_chunk_receiving()
+        stream.feed_data(b'part2')
+        stream.end_http_chunk_receiving()
+        stream.begin_http_chunk_receiving()
+        stream.feed_data(b'part3')
+        stream.end_http_chunk_receiving()
+
+        assert list(stream._http_chunk_splits) == [5, 10, 15]
+
+        data = await stream.read(10)
+        assert b'part1part2' == data
+
+        # MUST remove `5`, but MUST NOT return 10 (corner case)
+        assert list(stream._http_chunk_splits) == [10, 15]
+
+        data = await stream.read(1)
+        assert b'p' == data
+
+        assert list(stream._http_chunk_splits) == [15]
+
     async def test_read_empty_chunks(self) -> None:
         """Test that feeding empty chunks does not break stream"""
         stream = self._make_one()
